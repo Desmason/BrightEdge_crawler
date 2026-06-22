@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+crawl_output/
+.DS_Store
+crawler_optimization_notes.txt

@@ -1,0 +1,106 @@
+Scale design notes
+
+Scope
+- Input: billions of URLs for a given year_month, from text files or MySQL.
+- Output: crawled metadata and content using a unified schema.
+- Required design areas: storage, SLOs/SLAs, progress tracking, monitoring.
+
+Local POC
+- /crawl handles one URL.
+- /crawl/batch handles 1-50 URLs with max_concurrency.
+- save_results writes JSONL metadata and body text files.
+- python -m app.ingest_file reads sample_inputs/urls_2026_07.txt and exports results.
+- The 50 URL API limit is only for local demo safety. Production scale uses jobs, queues, and workers.
+
+Input design
+- Text file: upload monthly file, read in chunks, normalize, dedupe, enqueue.
+- MySQL: read year_month partitions in pages, track last processed ID, normalize, dedupe, enqueue.
+- Production should not send billions of URLs in one API request.
+
+Processing architecture
+- API/scheduler creates a crawl job.
+- Ingestion reads text files or MySQL rows.
+- Queue stores URL tasks.
+- Worker pool crawls pages and extracts metadata/content.
+- Storage layer writes metadata rows and content objects.
+- Progress table tracks job status by job_id and year_month.
+
+Suggested components
+- Queue: SQS, Kafka, RabbitMQ, or Redis Streams.
+- Workers: ECS, Kubernetes, EC2, or similar.
+- Metadata: MySQL, PostgreSQL, DynamoDB, BigQuery, Snowflake, or Parquet.
+- Content: S3/object storage.
+- Monitoring: Prometheus/Grafana, CloudWatch, OpenTelemetry, Sentry.
+
+Storage design
+- Metadata stays queryable and small.
+- Large body text/raw HTML is stored separately and referenced by path.
+- Partition by year_month and optionally domain.
+- Use content hashes for dedupe.
+
+Local output
+- crawl_output/2026-07/metadata.jsonl
+- crawl_output/2026-07/content/{body_hash}.txt
+
+Production output example
+- s3://crawler-results/year_month=2026-07/metadata/
+- s3://crawler-results/year_month=2026-07/content/domain=example.com/{body_hash}.txt
+
+Unified schema
+
+Crawl result:
+- year_month, job_id, original_url, normalized_url, final_url, domain
+- crawl_status, status_code, content_type, error_message, retry_count
+- title, description, page_type, classification_method, classification_confidence, topics
+- body_text_path, raw_html_path, body_length, body_hash, raw_html_hash
+- discovered_at, crawled_at, exported_at
+
+Crawl job:
+- job_id, year_month, input_source_type, input_source_location, status
+- total_urls, duplicate_urls, queued_urls, in_progress_urls
+- succeeded_urls, failed_urls, retry_pending_urls, skipped_urls
+- started_at, finished_at, updated_at
+
+URL task:
+- task_id, job_id, year_month, original_url, normalized_url, domain
+- status, attempts, next_retry_at, last_error, created_at, updated_at
+
+SLOs
+- 99% of valid URLs are crawled or terminally marked within 24 hours.
+- 95% of crawl attempts finish within 10 seconds after a worker starts.
+- 99.9% availability for job submission/status APIs.
+- 99% of completed records are available in storage within 15 minutes.
+- Metadata write failure rate stays below 0.1%.
+
+SLAs
+- Monthly crawl dataset delivered within 48 hours after input finalization.
+- Job status APIs maintain 99.9% monthly uptime, excluding planned maintenance.
+- Stored metadata remains available according to retention policy.
+
+Progress tracking
+- Track by job_id and year_month.
+- Fields: total, queued, in_progress, succeeded, failed, skipped, retry_pending, duplicates.
+- completion_percentage = (succeeded + failed + skipped) / total.
+- Track oldest_unprocessed_task_age and estimated_time_remaining.
+
+Monitoring metrics
+- Throughput: crawled/min, succeeded/min, failed/min, worker utilization.
+- Queue: depth, oldest message age, retry queue depth, dead-letter count.
+- Crawl quality: success rate, timeout rate, 403 rate, 5xx rate, unsupported content-type rate.
+- System: worker CPU/memory, API latency/error rate, storage write latency/failures.
+- Data quality: duplicate URL rate, duplicate content rate, missing title/description, empty body.
+
+Alerts
+- Queue age exceeds SLO.
+- Worker error rate spikes.
+- Metadata writes fail.
+- 403 rate spikes for major domains.
+- Dead-letter queue has messages.
+- Job progress falls behind expected rate.
+
+Safety controls
+- Request timeout, response size limit, redirect limit.
+- Per-domain rate limits.
+- Retry only temporary failures with exponential backoff.
+- Respect robots.txt if required by policy.
+- Keep small interactive API limits; use async jobs for large inputs.

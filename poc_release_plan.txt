@@ -1,0 +1,116 @@
+POC and release plan
+
+Goal
+- Move from local assignment demo to an engineering proof of concept.
+- Define blockers, estimates, evaluation criteria, and release readiness.
+
+Current state
+- Single URL API: POST /crawl.
+- Batch API: POST /crawl/batch with max_concurrency.
+- Text-file ingestion: python -m app.ingest_file.
+- Output: metadata.jsonl plus separate content files.
+- Design doc: scale_design.txt.
+
+POC goals
+- Process a monthly URL file.
+- Crawl concurrently without one failure stopping the job.
+- Export metadata in a DB-loadable schema.
+- Store large content separately.
+- Track job progress by year_month.
+- Show path from local files to queue-based workers.
+
+Next engineering steps
+
+1. Crawler hardening
+- Add tests for URL validation, content-type checks, size limits, and classification fallback.
+- Add body_preview or metadata-only batch responses.
+- Improve noisy topic filtering as needed.
+
+2. File ingestion
+- Validate year_month.
+- Deduplicate URLs before crawling.
+- Add optional local input limit.
+- Add grouped error summary.
+- Add progress logging for large local runs.
+
+3. Storage output
+- Add job_id and normalized_url to exports.
+- Add crawled_at and retry_count.
+- Keep JSONL metadata and separate content files.
+
+4. Production handoff
+- Decide queue, worker, metadata DB, and object storage.
+- Confirm unified schema.
+- Confirm SLOs, SLAs, retention, and compliance policy.
+
+Potential blockers
+- Site blocking: 403s and anti-bot behavior.
+- Network variability: timeouts and transient 5xxs.
+- HTML inconsistency: metadata differs by site.
+- Classification/topic quality: heuristic output can be noisy.
+- Huge inputs: cannot pass billions of URLs in one request.
+- Storage growth: full content can be expensive.
+- Compliance: robots.txt and crawl policy need product/legal guidance.
+
+Known/trivial work
+- README examples, sample input files, JSONL fields, simple tests.
+- Estimate: 0.5-2 days.
+
+Known/moderate work
+- job_id/progress tracking, mocked integration tests, configurable output directory, retry policy.
+- Estimate: 2-4 days.
+
+Higher-risk work
+- Queue-backed workers, MySQL connector, S3 integration, per-domain rate limits, dashboards.
+- Estimate: 1-3 weeks depending on infrastructure access.
+
+Implementation schedule
+
+Phase 1: Local POC hardening
+- Duration: 2-3 days.
+- Deliver tests, cleaner batch output, dedupe, job_id, docs.
+- Exit: sample file ingestion produces metadata/content and tests pass.
+
+Phase 2: Design validation
+- Duration: 2-3 days.
+- Review storage, queue, MySQL format, volume, retention, SLO/SLA, compliance.
+- Exit: architecture and schema approved.
+
+Phase 3: Infrastructure POC
+- Duration: 1-2 weeks.
+- Add queue, worker process, object storage, metadata DB, basic metrics.
+- Exit: larger test dataset runs end to end with queryable progress.
+
+Phase 4: Release candidate
+- Duration: 3-5 days.
+- Run load test, validate schema, alerts, rollback, and docs.
+- Exit: SLOs pass, errors are explainable, release blockers fixed.
+
+POC evaluation
+- Functional: file input, concurrent crawling, per-URL failures, JSONL export, content files.
+- Data quality: required fields present, content paths valid, failed rows include errors.
+- Reliability: invalid URLs, non-HTML, oversized pages, 403s, and timeouts fail cleanly.
+- Performance: compare runtime at max_concurrency 1, 5, and 10.
+- Operations: logs and summary explain progress and failures.
+
+Release checklist
+- Crawler, API, ingestion, and storage logic are separated.
+- Timeouts and size limits remain enabled.
+- Demo commands are copy-paste safe.
+- Output schema is documented.
+- Failure behavior is documented.
+- SLO/SLA expectations are documented.
+- Tests and smoke checks pass.
+
+Success criteria
+- Reviewer can run README commands without code changes.
+- File ingestion creates metadata.jsonl and content files.
+- Batch endpoint handles multiple URLs with controlled concurrency.
+- scale_design.txt explains production scale.
+- This plan explains blockers, estimates, evaluation, and release readiness.
+
+Known limitations
+- No real queue, MySQL connector, S3 connector, job DB, or production dashboard yet.
+- Topic extraction and fallback classification are heuristic.
+- Some websites block crawler requests.
+- These are acceptable for a local POC and documented for the production path.
