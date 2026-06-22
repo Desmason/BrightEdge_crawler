@@ -14,7 +14,6 @@ Python crawler that extracts page metadata, body text, page type, and topics. It
 ## Setup
 
 ```bash
-cd /Users/henry/brightedge-crawler
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
